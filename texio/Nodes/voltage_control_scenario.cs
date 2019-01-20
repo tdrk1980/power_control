@@ -32,6 +32,9 @@ public class voltage_control_scenario : MeasurementScript
     
     }
 
+    // CANframeの内容を出力する
+    // ref1: http://koshinran.hateblo.jp/entry/2018/01/30/200236
+    // ref2: https://stackoverflow.com/questions/3610431/string-join-on-a-listint-or-other-type
     private void printCANFrame(CANFrame frame)
     {
         Vector.Tools.Output.WriteLine(string.Join(" ", frame.Bytes.Select(b => b.ToString("X2")).ToArray()));
