@@ -1,6 +1,8 @@
 import serial
 import time
 
+print("to stop this script, please use Ctrl + Break ! (not Ctrl + C !)")
+
 print("dummy_response-start")
 
 
