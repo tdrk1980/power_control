@@ -32,12 +32,19 @@ public class voltage_control_scenario : MeasurementScript
     
     }
 
-    // CANframeの内容を出力する
+    // CANframeの内容を出力する (デバッグ用)
+    // e.g. 16.1702 1 123 Rx d 8 01 02 03 04 05 06 07 08
     // ref1: http://koshinran.hateblo.jp/entry/2018/01/30/200236
     // ref2: https://stackoverflow.com/questions/3610431/string-join-on-a-listint-or-other-type
     private void printCANFrame(CANFrame frame)
     {
-        Vector.Tools.Output.WriteLine(string.Join(" ", frame.Bytes.Select(b => b.ToString("X2")).ToArray()));
+        Vector.Tools.Output.WriteLine(
+            ((double)frame.TimeNS / 1000000000.0).ToString("F4") + " "
+            + frame.Channel.ToString() + " "
+            + frame.ID.ToString("X3") + " "
+            + "Rx d " + frame.DLC.ToString() + " " 
+            + string.Join(" ", frame.Bytes.Select(b => b.ToString("X2")).ToArray())
+        );
     }
 
 [OnCANFrame(1, 0x123)] // [OnCANFrame(byte channnel, int32 id)] @ OnCANFrameAttribute Constructor (Byte, Int32) 
