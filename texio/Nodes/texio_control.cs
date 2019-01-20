@@ -1,5 +1,5 @@
+// 自動で追加された
 using System;
-using System.IO.Ports;
 using System.Reflection;
 using Vector.Tools;
 using Vector.CANoe.Runtime;
@@ -7,79 +7,93 @@ using Vector.CANoe.Sockets;
 using Vector.CANoe.Threading;
 using Vector.Diagnostics;
 
-public class texio : MeasurementScript
+
+using System.IO.Ports; 
+
+public class texio_control : MeasurementScript
 {
-    // System.IO.Ports.SerialPort (COMポート制御クラス)
-    // https://docs.microsoft.com/ja-jp/dotnet/api/system.io.ports.serialport?view=netframework-4.7.2
+// System.IO.Ports.SerialPort (COMポート制御クラス)
+// https://docs.microsoft.com/ja-jp/dotnet/api/system.io.ports.serialport?view=netframework-4.7.2
     static SerialPort serialPort;
 
+/////
+// スクリプト作成時に自動生成されるイベントハンドラ
+/////
+    /////
+    // シミュレーション開始直前に呼ばれる初期化ハンドラ
+    // 注: 必要なインスタンスはここで全て生成しておく。
     public override void Initialize()
     {
+        // ポート名、ビットレートなど各種設定をする。
         serialPort = new SerialPort("COM26", 9600, System.IO.Ports.Parity.Even, 7, System.IO.Ports.StopBits.One);
 
+        // COMポート受信ハンドラの設定
         serialPort.DataReceived += new SerialDataReceivedEventHandler(DataReceivedHandler);
 
-        // COMポートをオープン
+        // COMポートのオープン
         serialPort.Open();
+
+        // 外部からの電圧設定要求の初期値を設定しておく
+        Texio.RequestVoltage.Value = 13.0;
     }
-    
+
+    /////
+    // シミュレーション終了直後に呼ばれるハンドラ
     public override void Shutdown()
     {
         serialPort.Close();
     }
 
-    public override void Start()
-    {
-
-    }
-
-    public override void Stop()
-    {
-
-    }
-
 /////
-// システム変数(Texio.RequestVoltage)の変化検出ハンドラ
-// Texio.RequestVoltage : 外部からの電圧設定要求
-[OnChange(typeof(Texio.RequestVoltage))]
+// ユーザ定義イベントハンドラ
+/////
+    /////
+    // システム変数(Texio.RequestVoltage)の変化検出ハンドラ - CANoeクラスライブラリ
+    // Texio.RequestVoltage : 外部からの電圧設定要求
+    [OnChange(typeof(Texio.RequestVoltage))]
     public void TexioRequestVoltageChanged()
     {
        serialPort.WriteLine("VOLT "+ Texio.RequestVoltage.Value.ToString("F2"));
        serialPort.WriteLine("VOLT?");
     }
 
-/////
-// シリアル受信ハンドラ
-// 注意: DataReceivedHandler内ではCANoeの.Net APIが制限される。[1]
+    /////
+    // COMポート受信ハンドラ - .Netクラスライブラリ
+    // 注 : DataReceivedHandlerは別スレッドからコールされるためCANoeのAPIが制限される。[1]
     private static void DataReceivedHandler(
                         object sender,
                         SerialDataReceivedEventArgs e)
     {
+        // バッファから受信データを読み出す
         string response = ((SerialPort)sender).ReadExisting();
 
-        response = response.Trim(); // 末尾に付いているLF('\r', 0x0A)を落とす。e.g."VOLT 13.00\r"==>"VOLT 13.00"
+        // 末尾に付いているLF('\r', 0x0A)を落とす。e.g."VOLT 13.00\r"==>"VOLT 13.00"
+        response = response.Trim(); 
 
-        // response解析
+        /////
+        // 応答(response)の解析
+        /////
+        
         if(response.Contains("VOLT ")) // 電圧問い合わせ"VOLT?"に対する応答
         {
-            string[] response_arr = response.Split(' '); //' 'を区切りとして配列にする。 e.g."VOLT 13.00"==>["VOLT","13.00"]
+            //' 'を区切りとして配列にする。 e.g."VOLT 13.00"==>["VOLT","13.00"]
+            string[] response_arr = response.Split(' '); 
             if(response_arr.Length == 2)
             {
-                Texio.ActualVoltage.Value = Convert.ToDouble(response_arr[1]); // システム変数Texio.ActualVoltage.Valueへの書き込み
+                // 文字列をdouble型に変換し、システム変数Texio.ActualVoltage.Valueに書き込み
+                Texio.ActualVoltage.Value = Convert.ToDouble(response_arr[1]);
             }
-            else // 期待しない形式は
+            else // 期待しないフォーマットを破棄
             {
                 Vector.Tools.Output.WriteLine("Data Received(Length error, ignored):"+ response + ", response_arr.Length=" + response_arr.Length.ToString());
             }
         }
-        else // 未実装の応答は無視する
+        else // 未実装の応答を破棄
         {
             Vector.Tools.Output.WriteLine("Data Received(Unexpected, ignored):" + response);
         }
     }
 }
-
-
 
 // [1]
 // 環境変数(Environment variable)を利用しようとしたが、
