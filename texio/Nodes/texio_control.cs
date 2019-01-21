@@ -4,8 +4,8 @@ using System.Reflection;
 using Vector.Tools;
 using Vector.CANoe.Runtime;
 using Vector.CANoe.Sockets;
-using Vector.CANoe.Threading;
-using Vector.Diagnostics;
+// using Vector.CANoe.Threading;
+// using Vector.Diagnostics;
 
 
 using System.IO.Ports; 
@@ -16,6 +16,9 @@ public class texio_control : MeasurementScript
 // https://docs.microsoft.com/ja-jp/dotnet/api/system.io.ports.serialport?view=netframework-4.7.2
     static SerialPort serialPort;
 
+// システム変数(TexioRequestVoltage)の変化フラグ
+    static bool isTexioRequestVoltageChanged = false;
+
 /////
 // スクリプト作成時に自動生成されるイベントハンドラ
 /////
@@ -25,10 +28,13 @@ public class texio_control : MeasurementScript
     public override void Initialize()
     {
         // ポート名、ビットレートなど各種設定をする。
-        serialPort = new SerialPort("COM26", 9600, System.IO.Ports.Parity.Even, 7, System.IO.Ports.StopBits.One);
+        serialPort = new SerialPort("COM2", 9600, System.IO.Ports.Parity.Even, 7, System.IO.Ports.StopBits.One);
 
         // COMポート受信ハンドラの設定
         serialPort.DataReceived += new SerialDataReceivedEventHandler(DataReceivedHandler);
+        serialPort.ReadTimeout = 100;
+        serialPort.WriteTimeout = 100;
+        // serialPort.NewLine = "\r";
 
         // COMポートのオープン
         serialPort.Open();
@@ -44,6 +50,20 @@ public class texio_control : MeasurementScript
         serialPort.Close();
     }
 
+    // "VOLT XX.XX"を送信するメソッド
+    private void SendSetVoltage(){
+        string request = "VOLT "+ Texio.RequestVoltage.Value.ToString("F2");
+        Vector.Tools.Output.WriteLine(request);
+        serialPort.WriteLine(request);
+    }
+
+    // "VOLT?"を送信するメソッド
+    private void SendQueryVoltage(){
+        string request = "VOLT?";
+        Vector.Tools.Output.WriteLine(request);
+        serialPort.WriteLine(request);
+    }
+
 /////
 // ユーザ定義イベントハンドラ
 /////
@@ -53,19 +73,31 @@ public class texio_control : MeasurementScript
     [OnChange(typeof(Texio.RequestVoltage))]
     public void TexioRequestVoltageChanged()
     {
-       serialPort.WriteLine("VOLT "+ Texio.RequestVoltage.Value.ToString("F2"));
-       serialPort.WriteLine("VOLT?");
+       isTexioRequestVoltageChanged = true; // OnTimerSendSetVoltageのタイミングで送信され、falaseとなる。
+    }
+
+    /////
+    // SetVoltage("VOLT XX.XX")送信タイマ時メソッド
+    // 注 : システム変数の変化に応じて連続送信するとCANoe/Texioの動作が怪しくなる。
+    //      連続的に要求された場合でもタイマ分間をあけるために利用する
+    [OnTimer(50)]
+    public void OnTimerSendSetVoltage()
+    {
+        if(isTexioRequestVoltageChanged){
+            SendSetVoltage();
+            isTexioRequestVoltageChanged = false;
+        }
     }
 
     /////
     // COMポート受信ハンドラ - .Netクラスライブラリ
-    // 注 : DataReceivedHandlerは別スレッドからコールされるためCANoeのAPIが制限される。[1]
+    // 注 : DataReceivedHandlerは別スレッドからコールされるためCANoeのAPIが制限される。[ref1]
     private static void DataReceivedHandler(
                         object sender,
                         SerialDataReceivedEventArgs e)
     {
         // バッファから受信データを読み出す
-        string response = ((SerialPort)sender).ReadExisting();
+        string response = ((SerialPort)sender).ReadLine();
 
         // 末尾に付いているLF('\r', 0x0A)を落とす。e.g."VOLT 13.00\r"==>"VOLT 13.00"
         response = response.Trim(); 
@@ -74,7 +106,7 @@ public class texio_control : MeasurementScript
         // 応答(response)の解析
         /////
         
-        if(response.Contains("VOLT ")) // 電圧問い合わせ"VOLT?"に対する応答
+        if(response.Contains("VOLT ")) // 電圧応答
         {
             //' 'を区切りとして配列にする。 e.g."VOLT 13.00"==>["VOLT","13.00"]
             string[] response_arr = response.Split(' '); 
@@ -95,7 +127,13 @@ public class texio_control : MeasurementScript
     }
 }
 
-// [1]
+
+
+
+
+
+
+// [ref1]
 // 環境変数(Environment variable)を利用しようとしたが、
 // CANoe 10.0のHelp(CANoeCANalyzer.chm)の
 
